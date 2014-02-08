@@ -73,7 +73,7 @@ def read_usage(excpetion=None):
             df = GBA.load_weather(df, 'KLOM_norristown')
             session['df'] = df
             msg =  "Loaded default dataset..."
-        return msg+'<br /> <a href="/dashboard">Go to dashboard</a>'
+            return redirect(url_for('dashboard'))
     else:
         return """
         <h1>Green Button Analysis</h1>
@@ -92,7 +92,8 @@ def read_usage(excpetion=None):
 def drop_dataframe():
     for k in session.keys():
         session.drop(k)
-    return "Your data has been removed from the server"
+    return redirect(url_for('read_usage'))
+
 
 ####################################################################
 # Dashboard
@@ -213,6 +214,37 @@ def render_figure(fig_id):
 def viewraw():
     assert_data()
     return GBA.google_linechart(session['df'])
+
+@app.route('/css/bootstrap-responsive.css')
+def serveBootstrapResponsivecss():
+    f=open("templates/css/bootstrap-responsive.css")
+    return f.read()
+    
+@app.route('/css/bootstrap.css')
+def serveBootstrapcss():
+    f=open("templates/css/bootstrap.css")
+    return f.read()
+
+@app.route('/css/styles.css')
+def serveStyles():
+    f=open("templates/css/styles.css")
+    return f.read()
+
+@app.route('/js/bootstrap.js')
+def serveJSBootstrap():
+    f=open("templates/js/bootstrap.js")
+    return f.read()
+
+@app.route('/js/jquery-1.8.2.js')
+def serveJquery():
+    f=open("templates/js/jquery-1.8.2.js")
+    return f.read()
+
+@app.route('/js/script.js')
+def serveScript():
+    f=open("templates/js/script.js")
+    return f.read()
+
 
 
 def assert_data():
