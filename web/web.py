@@ -67,6 +67,7 @@ def read_usage(excpetion=None):
             else:
                 session['df'] = df
                 msg = "Loaded your data..."
+                return redirect(url_for('dashboard'))
         else:
             # Read in default dataset
             df = GBA.read_PECO_csv('DailyElectricUsage')
@@ -75,18 +76,9 @@ def read_usage(excpetion=None):
             msg =  "Loaded default dataset..."
             return redirect(url_for('dashboard'))
     else:
-        return """
-        <h1>Green Button Analysis</h1>
-        <p>If your utiltiy supports Green-Button export, upload the xml
-        data using the dialog below.  </p>
-        <p>Otherwise, leave box blank to 
-        load a sample dataset.</p>
-        <form action="" method="post" enctype="multipart/form-data" >
-        <input type=file name=file />
-        <p><input type='submit' /></p>
-        <p><input type='submit' value="I have no data, use default" /></p>
-        </form>
-        """
+        f = open(root+r"/templates/read_usage.html")
+        return f.read()
+    return redirect(url_for('dashboard'))
 
 @app.route('/drop')
 def drop_dataframe():
@@ -100,7 +92,8 @@ def drop_dataframe():
 from wtforms import Form, TextField, SelectMultipleField, validators
 
 class DashboardForm(Form):
-    idx = TextField("Slice (Leave blank unless you know what you're doing)")
+    idx = TextField("Slice (ex: enter 2013-10:2013-12 to only include " 
+                     "Oct 2013 to Dec 2013)")
     tags = SelectMultipleField('Tags', choices=[
                 ('--T','-------TIME TAGS-------'),
                 ('Weekday',     'Weekday vs Weekend'),
@@ -127,6 +120,7 @@ class DashboardForm(Form):
                                           "Don't select headers")]
             
             )
+            
 @app.route('/dashboard', methods=['POST','GET'])
 def dashboard():
     form = DashboardForm(request.form)
@@ -134,6 +128,8 @@ def dashboard():
         session['tags'] = form.tags.data
         session['pnodes'] = form.pnodes.data
         session['idx'] = form.idx.data
+        session['startDate'] = request.form['startDate']
+        session['endDate'] = request.form['endDate']
         return redirect(url_for('report'))
     return render_template('dashboard.html', form=form)
 
@@ -143,13 +139,32 @@ def report():
     assert_data()
     df = session['df']
     
+    # For example, user could sumbit 2013-10:2014-02 but we need to make this
+    #   into '2013-10':'2014-10'
     if 'idx' in session.keys() and len(session['idx'])>0:
+        session['_filter']
         idx = session['idx']
         if idx.find(':') > -1:
             lidx, ridx = idx.split(':')
             df = df[lidx:ridx]
         else:
             df = df[idx]
+            
+    if 'startDate' in session.keys() and 'endDate' in session.keys():
+        startDat = session['startDate']
+        endDat = session['endDate']
+
+        #return "%s %s" % (pandas.Timestamp(startDat), startDat)        
+        if startDat != '' and endDat != '':
+            # Filter the data frame to only be a subset of full time range
+            try:
+                startDate = pandas.Timestamp(startDat)
+                endDate = pandas.Timestamp(endDat)
+                df = df[startDate:endDate]
+            except:
+                return "Timestamp error"
+            #return str(df)
+        
     
     figures = []
     if 'tags' in session.keys() and len(session['tags'])>0:
@@ -169,15 +184,18 @@ def report():
     session.drop('tags')
     s = '<h1>Figures</h1>'
     figures_rendered = []
+    template_plots = []
     for n, fig in enumerate(figures):
         s+='<img src="plt/%d.png" /><br />' % n
         canvas=FigureCanvas(fig)
         png_output = StringIO()
         canvas.print_png(png_output)
         figures_rendered.append(png_output.getvalue())
+        template_plots.append( ("Plot #%d"%n, "plt/%d.png"%n) )
     session['figures'] = figures_rendered
     s += '<p><a href="/dashboard">Back to dashboard</a></p><br /><br />'
-    return s
+    
+    return render_template('report.html', plots=template_plots)
         
 
 @app.route("/plt/<int:fig_id>.png")
@@ -210,10 +228,61 @@ def render_figure(fig_id):
     return response
      
 
+############################################################################
+# Line Chart Test
+# API sandbox: https://code.google.com/apis/ajax/playground/?type=visualization#annotated_time_line
+# API docs: https://developers.google.com/chart/interactive/docs/gallery/annotatedtimeline?csw=1
+# DataTable docs: https://developers.google.com/chart/interactive/docs/reference?csw=1
+def google_linechart(df):
+    template = "        {c:[{v: 'Date(%(ts)s)'}, {v: %(USAGE)s}, {v: %(COST)s}]},\n"
+    html = """
+    <!--
+    You are free to copy and use this sample in accordance with the terms of the
+    Apache license (http://www.apache.org/licenses/LICENSE-2.0.html)
+    -->
+    
+    <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+    <html xmlns="http://www.w3.org/1999/xhtml">
+    <head>
+      <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+      <title>Google Visualization API Sample</title>
+      <script type="text/javascript" src="http://www.google.com/jsapi"></script>
+      <script type="text/javascript">
+        google.load('visualization', '1', {packages: ['annotatedtimeline']});
+        function drawVisualization() {
+          var data = new google.visualization.DataTable(
+          {
+           cols: [{id: 'date', label: 'Date', type: 'datetime'},
+                  {id: 'USAGE', label: 'Usage (kWh)', type: 'number'},
+                  {id: 'COST', label: 'Cost ($)', type: 'number'}],
+           rows: [
+    """
+    for lbl, r in df.iterrows():
+        r['ts']=r['ts'].strftime('%Y,%m,%d,%H,%M,%S')
+        html+= template % r.fillna('null')
+    html +="""
+                ]
+          });
+        
+          var annotatedtimeline = new google.visualization.AnnotatedTimeLine(
+              document.getElementById('visualization'));
+          annotatedtimeline.draw(data, {'displayAnnotations': true});
+        }
+        
+        google.setOnLoadCallback(drawVisualization);
+      </script>
+    </head>
+    <body style="font-family: Arial;border: 0 none;">
+    <div id="visualization" style="width: 800px; height: 400px;"></div>
+    </body>
+    </html>
+    """
+    return html
+
 @app.route('/raw')
 def viewraw():
     assert_data()
-    return GBA.google_linechart(session['df'])
+    return google_linechart(session['df'])
 
 @app.route('/css/bootstrap-responsive.css')
 def serveBootstrapResponsivecss():
