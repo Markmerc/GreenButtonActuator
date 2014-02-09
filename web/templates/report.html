@@ -17431,6 +17431,7 @@
 
 <div class="accordion" id="accordion2">
 
+<<<<<<< HEAD
 
 
   <div class="accordion-group">
@@ -17458,6 +17459,22 @@
       </div>
     </div>
   </div>
+=======
+{% for plt in plots %}
+  <div class="accordion-group">
+    <div class="accordion-heading">
+      <a class="accordion-toggle" data-toggle="collapse" data-parent="#accordion2" href="#collapse{{ loop.index }}">
+        Graph: {{ plt[0] }}
+      </a>
+    </div>
+    <div id="collapse{{ loop.index }}" class="accordion-body collapse">
+      <div class="accordion-inner">
+        <img src="{{ plt[1] }}">
+      </div>
+    </div>
+  </div>
+{% endfor %}  
+>>>>>>> upstream/master
   
 </div>
 
